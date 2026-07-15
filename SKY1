@@ -1,0 +1,230 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local WalkSpeed = 16
+local JumpPower = 50
+
+local function GetChar()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function GetHRP()
+    local char = GetChar()
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetHum()
+    local char = GetChar()
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function UpdateValues()
+    local hum = GetHum()
+    if hum then
+        hum.WalkSpeed = WalkSpeed
+        hum.JumpPower = JumpPower
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    UpdateValues()
+end)
+
+-- Fly
+local flying = false
+local FLY = nil
+local gyro = nil
+local bodyVelocity = nil
+
+local function StartFly()
+    local root = GetHRP()
+    if not root then return end
+
+    flying = true
+    local gyro = Instance.new("BodyGyro", root)
+    gyro.MaxTorque = Vector3.new(500000, 500000, 500000)
+    gyro.P = 1000
+    gyro.D = 50
+
+    local bodyVelocity = Instance.new("BodyVelocity", root)
+    bodyVelocity.MaxForce = Vector3.new(500000, 5000, 500000)
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+
+    RunService.Stepped:Connect(function()
+        if not flying then
+            gyro:Destroy()
+            bodyVelocity:Destroy()
+            return
+        end
+
+        local moveDirection = GetHum().MoveDirection
+        if moveDirection.Magnitude > 0 then
+            local camCF = Camera.CoordinateFrame
+            local vector = camCF.LookVector * moveDirection.Z + camCF.RightVector * moveDirection.X
+            vector = Vector3.new(vector.X, 0, vector.Z).Unit
+            bodyVelocity.Velocity = vector * 100
+        else
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        end
+    end)
+end
+
+local function StopFly()
+    flying = false
+end
+
+-- Noclip
+local noclip = false
+local function ToggleNoclip()
+    noclip = not noclip
+    local char = GetChar()
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = not noclip
+        end
+    end
+end
+
+-- Invisibility
+local function ToggleInvisibility()
+    local char = GetChar()
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.LocalTransparencyModifier = part.LocalTransparencyModifier == 0 and 1 or 0
+        end
+    end
+end
+
+-- Aimbot
+local aimbot = false
+local function ToggleAimbot()
+    aimbot = not aimbot
+    while aimbot do
+        task.wait()
+        local target = nil
+        local minDist = math.huge
+        local center = Camera.ViewportSize / 2
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                if head then
+                    local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            target = head
+                        end
+                    end
+                end
+            end
+        end
+
+        if target then
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Position)
+        end
+    end
+end
+
+-- AutoFarm
+local autoFarm = false
+local farmDist = 20
+local function ToggleAutoFarm()
+    autoFarm = not autoFarm
+    if autoFarm then
+        local connection = nil
+        connection = RunService.Heartbeat:Connect(function()
+            local hrp = GetHRP()
+            if not hrp then return end
+
+            local closestDist = farmDist
+            local closestTarget = nil
+            for _, part in ipairs(Workspace:GetDescendants()) do
+                if part.Name == "HumanoidRootPart" and part.Parent ~= GetChar() then
+                    local dist = (hrp.Position - part.Position).magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestTarget = part
+                    end
+                end
+            end
+
+            if closestTarget then
+                local direction = (closestTarget.Position - hrp.Position).unit * Vector3.new(1,0,1)
+                GetHum():Move(direction)
+                if closestDist < 5 then
+                    local tool = GetChar():FindFirstChildOfClass("Tool")
+                    if tool then
+                        local remote = tool:FindFirstChildOfClass("RemoteEvent")
+                        if remote then
+                            remote:FireServer()
+                        end
+                    end
+                end
+            else
+                GetHum():Move(Vector3.new(0,0,0))
+            end
+        end)
+
+        coroutine.wrap(function()
+            while autoFarm and connection do
+                task.wait()
+            end
+            if connection then
+                connection:Disconnect()
+            end
+        end)()
+    end
+end
+
+-- ESP
+local espEnabled = false
+local function ToggleESP()
+    espEnabled = not espEnabled
+    local espFolder = Workspace:FindFirstChild("ESP")
+    if espFolder then espFolder:Destroy() end
+
+    if espEnabled then
+        espFolder = Instance.new("Folder")
+        espFolder.Name = "ESP"
+        espFolder.Parent = Workspace
+
+        local function updateESP()
+            for _, child in ipairs(espFolder:GetChildren()) do
+                child:Destroy()
+            end
+
+            local espFolder2 = Instance.new("Folder")
+            espFolder2.Parent = espFolder
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local hl = Instance.new("BoxHandleAdornment")
+                    hl.Adornee = player.Character:FindFirstChild("HumanoidRootPart")
+                    hl.Size = Vector3.new(4, 6, 4)
+                    hl.Color3 = player.TeamColor.Color or Color3.new(1, 0, 0)
+                    hl.AlwaysOnTop = true
+                    hl.Transparency = 0.5
+                    hl.Parent = espFolder2
+                end
+            end
+        end
+
+        Players.PlayerAdded:Connect(updateESP)
+        Players.PlayerRemoving:Connect(updateESP)
+        task.spawn(function()
+            while espEnabled do
+                updateESP()
+                task.wait(0.5)
+            end
+        end)
+    end
+end
